@@ -241,13 +241,13 @@ async def process_hour(callback_query: types.CallbackQuery, state: FSMContext):
     await state.set_data(data)
     # Create a new keyboard markup for selecting minutes
     keyboard = types.InlineKeyboardMarkup()
+    #keyboard = types.InlineKeyboardMarkup()
     # Add buttons for each possible minute value
     for minute in range(0, 60, 10):
         keyboard.add(types.InlineKeyboardButton(f"{minute:02d}", callback_data=f"minute_{minute}"))
     # Edit the message to show the selected hour and the new keyboard for selecting minutes
     await bot.edit_message_text(f"You selected {hour:02d}:00. Please select the minute:", callback_query.message.chat.id, callback_query.message.message_id, reply_markup=keyboard)
     
-
 @dp.callback_query_handler(lambda callback_query: callback_query.data.startswith('minute'), state=Form.time)
 async def process_minute(callback_query: types.CallbackQuery, state: FSMContext):
     # Get the selected minute from the callback data
