@@ -46,6 +46,7 @@ class Form(StatesGroup):
     time_hour = State()
     time_minute = State()
     confirm_change = State()
+    times_selected = {}
 
     def __init__(self):
         self.times_selected = {}
@@ -93,8 +94,6 @@ async def process_visits(message: types.Message, state: FSMContext):
         await Form.num_days.set()
         await message.reply("Select how many days of the week we want to visit:")
 
-
-
 days_of_week = [
     ('Monday', 'monday'),
     ('Tuesday', 'tuesday'),
@@ -135,14 +134,18 @@ async def process_num_days(message: types.Message, state: FSMContext):
     await message.reply("Please select the days of the week:", reply_markup=days_keyboard)
     await Form.days.set()
 
+times_selected = {}
+selected_time = {}
 @dp.message_handler(state=Form.days)
 async def process_days(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         days = data.get("days", [])
         selected_day = message.text
-        if selected_day in days:
-            await message.reply(f"{selected_day} has already been selected. Please choose a different day.")
-            return
+        if selected_day:
+            times_selected[selected_day[0]] = selected_time
+        else:
+            await message.reply("Please select a valid day of the week.")
+
         days.append(selected_day)
         data["days"] = days
         num_days = data.get("num_days", 0)
@@ -151,7 +154,7 @@ async def process_days(message: types.Message, state: FSMContext):
             await state.update_data(days=days)
             await Form.time.set()
             # Ask the user to select a time for each day of the week
-            await message.reply("Please select the time for each day of the week:")
+            #await message.reply("Please select the time for each day of the week:")
         else:
             await message.reply(f"Please select {num_days - len(days)} more day(s) of the week:", reply_markup=days_keyboard)
 
@@ -206,18 +209,17 @@ keyboard.add(*hour_buttons)
 @dp.message_handler(state=Form.time)
 async def process_times(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
-        times_selected = state.times_selected
         days = data["days"]
+        times_selected = data.get("times_selected", {})
         selected_time = message.text
-        times = data.get("times", {})
-        times_selected[selected_days] = selected_time
         selected_days = [
             value for name, value in days_of_week
             if name in message.text
         ]
+        times_selected[selected_days[0]] = selected_time
         if len(times_selected) == len(days):
             # Store the selected times in the state
-            await state.update_data(times=times_selected)
+            await state.update_data(times_selected=times_selected)
             # Display the summary to the user
             summary = "\n".join([f"{day}: {times_selected[day]}" for day in days])
             await message.reply(f"You have selected the following times:\n{summary}")
@@ -226,28 +228,31 @@ async def process_times(message: types.Message, state: FSMContext):
             # Ask the user to select the time for the next day
             next_day = [day for day in days if day not in times_selected][0]
             await message.reply(f"Please select the time for {next_day}:")
+        
+
 
 @dp.callback_query_handler(lambda callback_query: callback_query.data.startswith('hour'), state=Form.time)
 async def process_hour(callback_query: types.CallbackQuery, state: FSMContext):
     # Get the selected hour from the callback data
     hour = int(callback_query.data.split("_")[1])
+    await bot.edit_message_text(f"You selected ")
     # Check that the hour value is within the valid range of 0 to 23
     if hour < 0 or hour > 23:
         await bot.answer_callback_query(callback_query.id, text="Invalid hour value. Please select a value between 0 and 23.")
         return
     # Update the state with the selected hour
     data = await state.get_data()
-    data['hour'] = hour
+    #data['hour'] = hour
+    data['times_selected'][f"{data['date'].strftime('%Y-%m-%d')} {data['hour']:02d}:{data['minute']:02d}"] = True
     await state.set_data(data)
     # Create a new keyboard markup for selecting minutes
     keyboard = types.InlineKeyboardMarkup()
-    #keyboard = types.InlineKeyboardMarkup()
     # Add buttons for each possible minute value
     for minute in range(0, 60, 10):
         keyboard.add(types.InlineKeyboardButton(f"{minute:02d}", callback_data=f"minute_{minute}"))
     # Edit the message to show the selected hour and the new keyboard for selecting minutes
     await bot.edit_message_text(f"You selected {hour:02d}:00. Please select the minute:", callback_query.message.chat.id, callback_query.message.message_id, reply_markup=keyboard)
-    
+
 @dp.callback_query_handler(lambda callback_query: callback_query.data.startswith('minute'), state=Form.time)
 async def process_minute(callback_query: types.CallbackQuery, state: FSMContext):
     # Get the selected minute from the callback data
